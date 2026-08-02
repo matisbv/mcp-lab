@@ -50,69 +50,61 @@ class MCPClient:
     # Query processing logic
     async def process_query(self, query: str) -> str:
         """Process a query using Claude and available tools"""
-        messages = [
-            {
-                "role": "user",
-                "content": query
-            }
-        ]
+        messages = [{"role": "user", "content": query}]
 
         response = await self.session.list_tools()
         available_tools = [{
             "name": tool.name,
             "description": tool.description,
-            "input_schema": tool.inputSchema
+            "input_schema": tool.input_schema
         } for tool in response.tools]
 
-        # Initial Claude API call
-        response = self.anthropic.messages.create(
-            model="claude-sonnet-5",
-            max_tokens=1000,
-            messages=messages,
-            tools=available_tools
-        )
-
-        # Process response and handle tool calls
         final_text = []
 
-        assistant_message_content = []
-        for content in response.content:
-            if content.type == 'text':
-                final_text.append(content.text)
-                assistant_message_content.append(content)
-            elif content.type == 'tool_use':
-                tool_name = content.name
-                tool_args = content.input
+        while True:
+            response = self.anthropic.messages.create(
+                model="claude-sonnet-5",
+                max_tokens=1000,
+                messages=messages,
+                tools=available_tools
+            )
 
-                # Execute tool call
-                result = await self.session.call_tool(tool_name, tool_args)
-                final_text.append(f"[Calling tool {tool_name} with args {tool_args}]")
+            assistant_message_content = []
+            has_tool_use = False
 
-                assistant_message_content.append(content)
-                messages.append({
-                    "role": "assistant",
-                    "content": assistant_message_content
-                })
-                messages.append({
-                    "role": "user",
-                    "content": [
-                        {
+            for content in response.content:
+                if content.type == 'text':
+                    final_text.append(content.text)
+                    assistant_message_content.append(content)
+                elif content.type == 'thinking':
+                    # Not shown to the user as an "answer," but must be
+                    # preserved and echoed back for multi-turn tool use.
+                    assistant_message_content.append(content)
+                elif content.type == 'tool_use':
+                    has_tool_use = True
+                    tool_name = content.name
+                    tool_args = content.input
+
+                    result = await self.session.call_tool(tool_name, tool_args)
+                    final_text.append(f"[Calling tool {tool_name} with args {tool_args}]")
+
+                    assistant_message_content.append(content)
+                    messages.append({
+                        "role": "assistant",
+                        "content": assistant_message_content
+                    })
+                    messages.append({
+                        "role": "user",
+                        "content": [{
                             "type": "tool_result",
                             "tool_use_id": content.id,
                             "content": result.content
-                        }
-                    ]
-                })
+                        }]
+                    })
+                    break  # re-enter the while loop with updated messages
 
-                # Get next response from Claude
-                response = self.anthropic.messages.create(
-                    model="claude-sonnet-5",
-                    max_tokens=1000,
-                    messages=messages,
-                    tools=available_tools
-                )
-
-                final_text.append(response.content[0].text)
+            if not has_tool_use:
+                break
 
         return "\n".join(final_text)
     

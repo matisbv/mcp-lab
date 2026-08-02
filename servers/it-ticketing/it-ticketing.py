@@ -1,10 +1,10 @@
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from datetime import datetime
 import random, io
 from urllib.error import HTTPError
 
 # Initialize FastMCP server
-mcp = FastMCP("it-ticketing")
+mcp = MCPServer("it-ticketing")
 
 # Constants
 API_FAILURE_MOCK_PROB = 0.3
@@ -103,9 +103,5 @@ def resolve_ticket(ticket_id: int, resolution_note: str):
     return(f'Ticket {ticket_id} successfully resolved.')
 
 # Running the server
-def main():
-    # Initialize and run the server
-    mcp.run(transport="stdio")
-
 if __name__ == "__main__":
-    main()
+    mcp.run(transport="stdio")
