@@ -1,6 +1,8 @@
 import asyncio
+import os
 from typing import Optional
 from contextlib import AsyncExitStack
+import httpx2
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.streamable_http import streamable_http_client
@@ -9,6 +11,7 @@ from anthropic import Anthropic
 from dotenv import load_dotenv
 
 load_dotenv()  # load environment variables from .env
+mcp_api_key = os.getenv("MCP_API_KEY", None)
 
 class MCPClient:
     def __init__(self):
@@ -24,9 +27,15 @@ class MCPClient:
         Args:
             server_url: URL for the streamable HTTP server
         """
-        transport = await self.exit_stack.enter_async_context(
-            streamable_http_client(server_url)
-        )
+        if mcp_api_key is not None:
+            http_client = httpx2.AsyncClient(headers={"Authorization": f"Bearer {mcp_api_key}"})
+            transport = await self.exit_stack.enter_async_context(
+                streamable_http_client(server_url, http_client = http_client)
+            )
+        else:
+            transport = await self.exit_stack.enter_async_context(
+                streamable_http_client(server_url)
+            )
         self.read, self.write = transport
         self.session = await self.exit_stack.enter_async_context(
             ClientSession(self.read, self.write)
